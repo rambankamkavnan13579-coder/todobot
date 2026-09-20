@@ -15,9 +15,28 @@ Commands:
 import sqlite3
 import asyncio
 import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from datetime import date
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
+
+
+# ---------- TINY WEB SERVER (so Render's free Web Service stays alive) ----------
+class HealthCheckHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b"Bot is alive")
+
+    def log_message(self, format, *args):
+        pass  # keeps logs clean
+
+
+def run_health_server():
+    port = int(os.environ.get("PORT", 10000))
+    server = HTTPServer(("0.0.0.0", port), HealthCheckHandler)
+    server.serve_forever()
 
 DB_FILE = "todobot.db"
 # On your laptop: paste your token directly between the quotes below.
@@ -211,6 +230,10 @@ async def month_score(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ---------- MAIN ----------
 def main():
     init_db()
+
+    # Start the tiny web server in the background so Render's free tier
+    # sees this as "alive" and doesn't shut it down
+    threading.Thread(target=run_health_server, daemon=True).start()
 
     # Python 3.14 needs an event loop created explicitly before this runs
     try:
